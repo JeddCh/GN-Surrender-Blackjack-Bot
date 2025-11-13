@@ -1,7 +1,7 @@
-dealer = (972, 293, 1016, 339)
-playerTable = (58, 572, 1806, 852)
-buttonBbox = (689, 897, 1170, 1004)
+dealer = (1005, 288, 1042, 318)
+playerTable = (7, 441, 1902, 899)
+buttonBbox = (702, 904, 1202, 1016)
 dynamicDealer = 0
 specificCard = (895, 686, 920, 716)
-surrender15Specific = 1
-delay = 0.5
+surrender15Specific = 0
+delay = 0.08
