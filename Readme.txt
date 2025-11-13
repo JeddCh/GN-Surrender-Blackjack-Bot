@@ -9,6 +9,7 @@ Requires:
 
 Run from BlackjackGUI.py
 Make your game maximized, small numbers probably makes the OCR worse, I didn't run full-screen
+****Zoom out fully it makes the game bigger before you set your ranges*****
 Place your initial bet manually and click deal, script only clicks on rebet
 Will probably not work on smaller monitors/laptops
 
@@ -26,6 +27,7 @@ Change dynamicDealer to 1 to use searching function to find dealer box (draw lar
     Order of Strategy:
         Check if split is optimal -> Check if surrender is optimal -> If surrender is optimal but not available click it anyways -> Check if soft total -> Check if hard total
     
+
 
 
 
