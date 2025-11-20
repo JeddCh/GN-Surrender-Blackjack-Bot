@@ -44,8 +44,17 @@ class CardReader:
                 dealer_text = str(OCR.ocr_card(dealer_boxes[0][0], mode="dealer"))
             else:
                 dealer_text = str(OCR.ocr_card(self.dealer_bbox, mode="dealer"))
-            if dealer_text == "None" or dealer_text not in self.VALID_DEALER:
+
+            if dealer_text == "None":
                 return None
+
+            # Convert "11" to "1_11" for ace
+            if dealer_text == "11":
+                dealer_text = "1_11"
+
+            if dealer_text not in self.VALID_DEALER:
+                return None
+
             return dealer_text
         except Exception:
             return None

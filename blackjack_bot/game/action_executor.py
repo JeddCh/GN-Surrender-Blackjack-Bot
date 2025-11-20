@@ -48,6 +48,10 @@ class ActionExecutor:
             game_state.last_action = Action.SPLIT
             game_state.current_game_state = None
             game_state.in_split_hand = True
+
+            # Store current player value before split
+            current_player_value = self.cards.read_player_cards()
+
             self.buttons.click_button(buttons["SplitAvailable.PNG"])
 
             time.sleep(0.5)
@@ -58,9 +62,25 @@ class ActionExecutor:
 
             if is_active_game:
                 print("Split validated - continuing with split hand")
-                time.sleep(0.1)
-                game_state.waiting_for_change = True
-                game_state.change_start_time = time.time()
+
+                # Poll until card changes or timeout
+                start_time = time.time()
+                timeout = 2.0
+                card_changed = False
+                while time.time() - start_time < timeout:
+                    time.sleep(0.05)
+                    player_value = self.cards.read_player_cards()
+                    if player_value and player_value != current_player_value:
+                        # Successfully detected card change
+                        print(
+                            f"[Split hand ready: {current_player_value} -> {player_value}]"
+                        )
+                        card_changed = True
+                        break
+
+                if not card_changed:
+                    print("WARNING: Timeout waiting for split hand card change")
+
                 return True
             else:
                 # print(
@@ -141,9 +161,31 @@ class ActionExecutor:
             self.stats.bets_placed += 1
             game_state.last_action = Action.DOUBLE
             game_state.current_game_state = None
+
+            # Store current player value before double
+            current_player_value = self.cards.read_player_cards()
+
             self.buttons.click_button(buttons["DoubleAvailable.PNG"])
             time.sleep(0.15 if hand_type == "soft" else 0.3)
-            if not hand_type or hand_type == "hard":
+
+            # For split hands, poll until card changes or timeout
+            if game_state.in_split_hand:
+                start_time = time.time()
+                timeout = 2.0
+                while time.time() - start_time < timeout:
+                    time.sleep(0.05)
+                    player_value = self.cards.read_player_cards()
+                    if player_value and player_value != current_player_value:
+                        # Successfully detected card change
+                        print(
+                            f"[Split hand card changed: {current_player_value} -> {player_value}]"
+                        )
+                        break
+                else:
+                    # Timeout reached
+                    print("WARNING: Timeout waiting for next split hand after double")
+            elif not hand_type or hand_type == "hard":
                 self.cards.read_player_cards()
+
             return True
         return False
