@@ -5,8 +5,6 @@ import shutil
 import subprocess
 import sys
 
-import paddlex
-
 
 def build_exe():
     print("=" * 60)
@@ -22,18 +20,26 @@ def build_exe():
     # Main file to build
     main_file = "BlackjackGUI.py"
 
-    # Get all installed packages
-    user_deps = [dist.metadata["Name"] for dist in importlib.metadata.distributions()]
+    # Check for paddlex - it may not be installed
+    try:
+        import paddlex
 
-    # Get PaddleX required dependencies
-    deps_all = list(paddlex.utils.deps.DEP_SPECS.keys())
-
-    # Find which required deps are actually installed
-    deps_need = [dep for dep in user_deps if dep in deps_all]
-
-    print(f"\nFound {len(deps_need)} PaddleX dependencies to include:")
-    for dep in deps_need:
-        print(f"  - {dep}")
+        # Get all installed packages
+        user_deps = [
+            dist.metadata["Name"] for dist in importlib.metadata.distributions()
+        ]
+        # Get PaddleX required dependencies
+        deps_all = list(paddlex.utils.deps.DEP_SPECS.keys())
+        # Find which required deps are actually installed
+        deps_need = [dep for dep in user_deps if dep in deps_all]
+        print(f"\nFound {len(deps_need)} PaddleX dependencies to include:")
+        for dep in deps_need:
+            print(f"  - {dep}")
+        has_paddlex = True
+    except ImportError:
+        print("\nPaddleX not found - skipping PaddleX-specific packaging")
+        deps_need = []
+        has_paddlex = False
 
     # Build PyInstaller command
     cmd = [
@@ -41,70 +47,149 @@ def build_exe():
         "--onedir",
         "--name=BlackjackBot",
         "--noconfirm",
+        "--console",  # Shows console window for debugging output
         main_file,
-        "--collect-data",
-        "paddlex",
-        "--collect-binaries",
-        "paddle",
-        "--collect-binaries",
-        "nvidia",  # Include NVIDIA CUDA dependencies
     ]
 
-    # Add metadata for all needed dependencies
-    for dep in deps_need:
-        cmd += ["--copy-metadata", dep]
+    # Add PaddleX/Paddle specific options only if installed
+    if has_paddlex:
+        cmd += [
+            "--collect-data",
+            "paddlex",
+            "--collect-binaries",
+            "paddle",
+            "--collect-binaries",
+            "nvidia",
+        ]
+        # Add metadata for all needed dependencies
+        for dep in deps_need:
+            cmd += ["--copy-metadata", dep]
 
-    # Add your data files
+    # Platform-specific path separator
     separator = ";" if sys.platform == "win32" else ":"
 
+    # Track all data files/folders for verification
     data_files = []
+    data_folders = []
 
-    # Add Vars.txt
-    if os.path.exists("Vars.txt"):
-        data_files.append("Vars.txt")
-        cmd += ["--add-data", f"Vars.txt{separator}."]
-        print("✓ Adding Vars.txt")
-    else:
-        print("✗ WARNING: Vars.txt not found")
+    print("\n" + "-" * 40)
+    print("Adding data files and folders:")
+    print("-" * 40)
 
-    # Add Strategy.xlsx
-    if os.path.exists("Strategy.xlsx"):
-        data_files.append("Strategy.xlsx")
-        cmd += ["--add-data", f"Strategy.xlsx{separator}."]
-        print("✓ Adding Strategy.xlsx")
-    else:
-        print("✗ WARNING: Strategy.xlsx not found")
+    # === Single Files ===
+    single_files = [
+        "Vars.txt",
+        "Strategy.xlsx",
+        "Game Location.PNG",
+    ]
 
-    # Add BJ Buttons folder
-    if os.path.exists("BJ Buttons"):
-        cmd += ["--add-data", f"BJ Buttons{separator}BJ Buttons"]
-        print("✓ Adding BJ Buttons folder")
-    else:
-        print("✗ WARNING: BJ Buttons folder not found")
+    for file in single_files:
+        if os.path.exists(file):
+            data_files.append(file)
+            cmd += ["--add-data", f"{file}{separator}."]
+            print(f"  ✓ {file}")
+        else:
+            print(f"  ✗ WARNING: {file} not found")
 
-    # Add Captured_Cards folder
-    if os.path.exists("Captured_Cards"):
-        cmd += ["--add-data", f"Captured_Cards{separator}Captured_Cards"]
-        print("✓ Adding Captured_Cards folder")
-    else:
-        print("✗ WARNING: Captured_Cards folder not found")
-
-    # Add PNG files
+    # === PNG files in root ===
     png_files = glob.glob("*.PNG") + glob.glob("*.png")
+    # Filter out already added files
+    png_files = [f for f in png_files if f not in single_files]
     if png_files:
-        print(f"✓ Found {len(png_files)} PNG files")
+        print(f"  ✓ Found {len(png_files)} additional PNG files in root")
         for png in png_files:
             data_files.append(png)
             cmd += ["--add-data", f"{png}{separator}."]
-    else:
-        print("✗ WARNING: No PNG files found")
 
-    print(f"\nTotal: {len(data_files)} files + folders to include")
+    # === Folders with assets ===
+    folders_to_add = [
+        ("BJ Buttons", "BJ Buttons"),
+        ("Captured_Cards", "Captured_Cards"),
+        ("Example Bbox", "Example Bbox"),
+    ]
 
-    # Print command
+    for folder_name, dest_name in folders_to_add:
+        if os.path.exists(folder_name):
+            data_folders.append(folder_name)
+            cmd += ["--add-data", f"{folder_name}{separator}{dest_name}"]
+            # Count files recursively
+            file_count = sum(len(files) for _, _, files in os.walk(folder_name))
+            print(f"  ✓ {folder_name}/ ({file_count} files)")
+        else:
+            print(f"  ✗ WARNING: {folder_name}/ folder not found")
+
+    # === Hidden imports for local modules ===
+    print("\n" + "-" * 40)
+    print("Adding hidden imports:")
+    print("-" * 40)
+
+    # All Python files that might be imported
+    hidden_imports = [
+        # Root level modules
+        "BlackjackMain",
+        "boundingbox",
+        "ButtonChecker",
+        "find_player",
+        "NumberGrabber",
+        "OCR",
+        "ReadVars",
+        "resource_path",
+        # blackjack_bot package
+        "blackjack_bot",
+        "blackjack_bot.bot",
+        "blackjack_bot.enums",
+        "blackjack_bot.main",
+        "blackjack_bot.models",
+        "blackjack_bot.game",
+        "blackjack_bot.game.action_executor",
+        "blackjack_bot.game.button_manager",
+        "blackjack_bot.game.card_reader",
+        "blackjack_bot.strategy",
+        "blackjack_bot.strategy.decider",
+        "blackjack_bot.strategy.tables",
+        "blackjack_bot.utils",
+        "blackjack_bot.utils.screenshot",
+    ]
+
+    for module in hidden_imports:
+        cmd += ["--hidden-import", module]
+        print(f"  ✓ {module}")
+
+    # === Common dependencies that often need explicit inclusion ===
+    common_hidden = [
+        "PIL",
+        "PIL._imagingtk",
+        "PIL._tkinter_finder",
+        "cv2",
+        "numpy",
+        "pandas",
+        "openpyxl",
+        "tkinter",
+        "pyautogui",
+        "pynput",
+        "keyboard",
+        "mss",
+        "win32gui",
+        "win32api",
+        "win32con",
+    ]
+
+    print("\n  Common dependencies:")
+    for module in common_hidden:
+        cmd += ["--hidden-import", module]
+        print(f"  ✓ {module}")
+
+    # Summary
+    print("\n" + "-" * 40)
+    print(f"Total: {len(data_files)} files + {len(data_folders)} folders")
+    print(f"Hidden imports: {len(hidden_imports) + len(common_hidden)}")
+    print("-" * 40)
+
+    # Print command (truncated)
     print("\n" + "=" * 60)
     print("PyInstaller command:")
-    print(" ".join(cmd[:15]) + " ...")  # Truncated for readability
+    cmd_preview = " ".join(cmd[:10]) + f" ... ({len(cmd)} args total)"
+    print(cmd_preview)
     print("=" * 60)
 
     # Run build
@@ -122,7 +207,7 @@ def build_exe():
             print(f"\n✓ Application folder: {dist_path}")
             print(f"✓ Executable: {os.path.join(dist_path, 'BlackjackBot.exe')}")
 
-            # Verify data files
+            # Verify and copy data files if missing
             print("\nVerifying data files:")
             for f in data_files:
                 dest = os.path.join(dist_path, os.path.basename(f))
@@ -136,23 +221,16 @@ def build_exe():
                     except Exception as e:
                         print(f"    ✗ Failed to copy: {e}")
 
-            # Verify folders
+            # Verify and copy folders if missing
             print("\nVerifying folders:")
-            for folder_name in ["BJ Buttons", "Captured_Cards"]:
+            for folder_name in data_folders:
                 folder_path = os.path.join(dist_path, folder_name)
                 if os.path.exists(folder_path):
-                    file_count = len(
-                        [
-                            f
-                            for f in os.listdir(folder_path)
-                            if os.path.isfile(os.path.join(folder_path, f))
-                        ]
-                    )
+                    file_count = sum(len(files) for _, _, files in os.walk(folder_path))
                     print(f"  ✓ {folder_name}/ ({file_count} files)")
                 else:
-                    print(f"  ✗ {folder_name}/ - MISSING")
+                    print(f"  ✗ {folder_name}/ - MISSING, copying manually...")
                     if os.path.exists(folder_name):
-                        print(f"    Copying {folder_name} folder...")
                         try:
                             shutil.copytree(folder_name, folder_path)
                             print(f"    ✓ Copied {folder_name}/")
@@ -169,6 +247,15 @@ def build_exe():
             if os.path.exists(spec_file):
                 os.remove(spec_file)
                 print("  ✓ Deleted .spec file")
+
+            # Calculate final size
+            total_size = 0
+            for dirpath, dirnames, filenames in os.walk(dist_path):
+                for f in filenames:
+                    fp = os.path.join(dirpath, f)
+                    total_size += os.path.getsize(fp)
+            size_mb = total_size / (1024 * 1024)
+            print(f"\n  Total distribution size: {size_mb:.1f} MB")
 
             return True
         else:
@@ -203,17 +290,23 @@ if __name__ == "__main__":
     # Pre-build checks
     print("Pre-build checks:")
     required_items = [
-        "Vars.txt",
-        "Strategy.xlsx",
-        "BJ Buttons",
-        "Captured_Cards",
-        "BlackjackGUI.py",
+        ("BlackjackGUI.py", "file"),
+        ("Vars.txt", "file"),
+        ("Strategy.xlsx", "file"),
+        ("Game Location.PNG", "file"),
+        ("BJ Buttons", "folder"),
+        ("Captured_Cards", "folder"),
+        ("blackjack_bot", "folder"),
     ]
 
     all_present = True
-    for item in required_items:
+    for item, item_type in required_items:
         if os.path.exists(item):
-            print(f"  ✓ {item}")
+            if item_type == "folder":
+                file_count = sum(len(files) for _, _, files in os.walk(item))
+                print(f"  ✓ {item}/ ({file_count} files)")
+            else:
+                print(f"  ✓ {item}")
         else:
             print(f"  ✗ {item} - MISSING!")
             all_present = False
@@ -237,12 +330,20 @@ if __name__ == "__main__":
         print("  cd dist\\BlackjackBot")
         print("  BlackjackBot.exe")
         print("\nTo distribute:")
-        print("  Zip the entire dist\\BlackjackBot\\ folder")
-        print("  Users can extract and run BlackjackBot.exe")
+        print("  1. Zip the entire dist\\BlackjackBot\\ folder")
+        print("  2. Send the zip to your friend")
+        print("  3. They extract and run BlackjackBot.exe")
+        print("\nNote: If the app needs a console for debugging, edit")
+        print("      package.py and change --windowed to --console")
         print("=" * 60)
     else:
         print("\n" + "=" * 60)
         print("BUILD FAILED")
         print("=" * 60)
         print("\nCheck the errors above for details.")
+        print("\nCommon fixes:")
+        print("  1. Make sure all dependencies are installed:")
+        print("     pip install -r requirements.txt")
+        print("  2. Try running with --console instead of --windowed")
+        print("  3. Check for import errors in your Python files")
         sys.exit(1)
